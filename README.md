@@ -47,6 +47,7 @@ There's a self-contained test page in [`demo/index.html`](demo/index.html) (an i
    - text blocks → **text layers**, cloned with their computed styles (fonts, links, inline code, icons, `::before`/`::after`)
    - single-side borders and `<hr>` → **pen-tool lines**
    - `<img>`, `<svg>`, `<video>`, `<canvas>`, iframes → **media**. WebGL canvases, playing video and cross-origin iframes are cropped from a screenshot taken at click time while only those elements are visible.
+   - Uniform `transform: scale()` on previews and thumbnails carries into the rebuilt layers so fonts, borders and images keep their on-screen proportions.
    - repeated siblings (nav links, cards, list rows, logos) → one **master** plus **duplicates**
    - shared left edges and baselines → **ruler guides** that text snaps to
 2. **Blank.** A full-viewport layer, isolated from the page's CSS in a shadow root, covers the page with its own background color. A quick hidden scroll pass first triggers lazy images and reveal-on-scroll content.
@@ -91,3 +92,14 @@ There's a self-contained test page in [`demo/index.html`](demo/index.html) (an i
 ## License
 
 None yet. The original Swarm site is published without a license and this project adapts parts of it, so please don't reuse this code without checking with [Joel Califa](https://joelcalifa.com) as well.
+
+## 作者
+
+以下署名对应此 fork 的预览缩放修复。原项目和动效来源见上方 Credit。
+
+- **作者**：simon，一个不懂代码的AI极客
+- **微信交流群**：simonsxxs
+- **个人网站**：https://simonsxx.com
+- **AI 聚合平台**：https://aiapio.com
+- **GitHub**：https://github.com/simonsxxs
+- **Gitee**：https://gitee.com/simonsxx

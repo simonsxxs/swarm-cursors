@@ -524,12 +524,21 @@
       if (r.left >= clip.l - 0.5 && r.top >= clip.t - 0.5 && r.right <= clip.r + 0.5 && r.bottom <= clip.b + 0.5) return null;
       return convClip(clip, layer);
     };
+    // Bounds already include the page's transforms, but computed font sizes,
+    // borders and other CSS lengths are still in the element's layout space.
+    function uniformScale(cs) {
+      if (cs.transform === "none") return 1;
+      const m = new DOMMatrixReadOnly(cs.transform);
+      return m.is2D && m.b === 0 && m.c === 0 && m.a === m.d && m.a > 0 ? m.a : 1;
+    }
+
     const inDoc = (b, layer) =>
       layer === "world"
         ? b.x + b.w > 0 && b.x < docW && b.y + b.h > 0 && b.y < docH
         : b.x + b.w > 0 && b.x < innerWidth && b.y + b.h > 0 && b.y < innerHeight;
 
     function add(it) {
+      it.layoutScale ??= 1;
       it.id = items.length;
       it.v = 1;
       it.rv = 0;
@@ -593,20 +602,18 @@
       return s + "margin:0;box-sizing:border-box;width:100%;height:100%;position:relative;";
     }
 
-    function textItem(base, root, tb, cs, layer, extra) {
-      const fs = parseFloat(cs.fontSize) || 16;
+    function textItem(base, root, tb, cs) {
       const text = root.textContent.replace(/\s+/g, " ").trim();
       return add({
         kind: "text",
         ...base,
         tb,
         full: root,
-        fs,
-        lh: lhPx(cs),
+        fs: (parseFloat(cs.fontSize) || 16) * base.layoutScale,
+        lh: lhPx(cs) * base.layoutScale,
         align: cs.textAlign,
         text,
         sig: text,
-        ...extra,
       });
     }
 
@@ -621,10 +628,10 @@
       rg.selectNodeContents(el);
       const tr = rg.getBoundingClientRect();
       // table cells center their content vertically; reproduce the offset
-      if (cs.display === "table-cell" && tr.height) root.style.paddingTop = Math.max(0, tr.top - r.top) + "px";
+      if (cs.display === "table-cell" && tr.height) root.style.paddingTop = Math.max(0, tr.top - r.top) / ctx.layoutScale + "px";
       // floats outside the leaf (figures, infoboxes) shape its line boxes: add invisible shims
       if (/^(block|list-item)$/.test(root.style.display)) {
-        const n = (p) => parseFloat(cs.getPropertyValue(p)) || 0;
+        const n = (p) => (parseFloat(cs.getPropertyValue(p)) || 0) * ctx.layoutScale;
         const cl = r.left + n("border-left-width") + n("padding-left");
         const ct = r.top + n("border-top-width") + n("padding-top");
         const cr = r.right - n("border-right-width") - n("padding-right");
@@ -635,7 +642,8 @@
           const top = Math.max(0, f.t - ct);
           const w = f.side === "left" ? f.r - cl : cr - f.l;
           if (w <= 0) continue;
-          shim.setAttribute("style", `float:${f.side};clear:${f.side};width:${w}px;height:${Math.max(0, f.b - Math.max(f.t, ct))}px;margin-top:${top}px;`);
+          const s = ctx.layoutScale;
+          shim.setAttribute("style", `float:${f.side};clear:${f.side};width:${w / s}px;height:${Math.max(0, f.b - Math.max(f.t, ct)) / s}px;margin-top:${top / s}px;`);
           root.insertBefore(shim, root.firstChild);
         }
       }
@@ -644,11 +652,10 @@
       tb.x = clamp(tb.x, box.x - 4, box.x + box.w);
       tb.y = clamp(tb.y, box.y - 4, box.y + box.h);
       textItem(
-        { ...box, layer: ctx.layer, key, op: ctx.op, clip: clipFor(r, ctx.clip, ctx.layer), parentBox: ctx.boxItem, blend: cs.mixBlendMode !== "normal" ? cs.mixBlendMode : ctx.blend || "" },
+        { ...box, layoutScale: ctx.layoutScale, layer: ctx.layer, key, op: ctx.op, clip: clipFor(r, ctx.clip, ctx.layer), parentBox: ctx.boxItem, blend: cs.mixBlendMode !== "normal" ? cs.mixBlendMode : ctx.blend || "" },
         root,
         tb,
         cs,
-        ctx.layer,
       );
     }
 
@@ -661,7 +668,7 @@
       if (!intersect(ltrb(r), ctx.clip)) return;
       const root = document.createElement("div");
       root.setAttribute("style", rootStyle(cs, true));
-      const single = r.height < lhPx(cs) * 1.6;
+      const single = r.height < lhPx(cs) * ctx.layoutScale * 1.6;
       if (single) root.style.whiteSpace = "nowrap";
       for (const n of run) {
         if (n.nodeType === 3) root.appendChild(document.createTextNode(n.data));
@@ -671,11 +678,10 @@
       if (!inDoc(box, ctx.layer)) return;
       box.w += 1;
       textItem(
-        { ...box, layer: ctx.layer, key: ctx.key(), op: ctx.op, clip: clipFor(r, ctx.clip, ctx.layer), parentBox: ctx.boxItem, blend: ctx.blend || "" },
+        { ...box, layoutScale: ctx.layoutScale, layer: ctx.layer, key: ctx.key(), op: ctx.op, clip: clipFor(r, ctx.clip, ctx.layer), parentBox: ctx.boxItem, blend: ctx.blend || "" },
         root,
         { ...box },
         cs,
-        ctx.layer,
       );
     }
 
@@ -713,7 +719,7 @@
       const bgVisible = (alphaOf(bgc) > 0.01 && !sameColor(bgc, pageBg.color)) || bgi !== "none";
       if (el === body && pageBg.from === body) return null;
       const sides = ["top", "right", "bottom", "left"].map((s) => {
-        const w = parseFloat(cs.getPropertyValue(`border-${s}-width`)) || 0;
+        const w = (parseFloat(cs.getPropertyValue(`border-${s}-width`)) || 0) * ctx.layoutScale;
         const st = cs.getPropertyValue(`border-${s}-style`);
         const c = cs.getPropertyValue(`border-${s}-color`);
         return w > 0 && st !== "none" && st !== "hidden" && alphaOf(c) > 0.02 ? { s, w, st, c } : null;
@@ -753,6 +759,7 @@
         blend: cs.mixBlendMode !== "normal" ? cs.mixBlendMode : ctx.blend || "",
         big: b.w * b.h > vw * vh * 0.4,
         ...b,
+        layoutScale: ctx.layoutScale,
         css: cssText,
         radius: cs.borderRadius,
         draw: null,
@@ -775,9 +782,9 @@
       if (!c || c === "none" || c === "normal" || ps.display === "none" || ps.visibility !== "visible") return;
       const pop = parseFloat(ps.opacity);
       if (!(pop > 0.03)) return;
-      const n = (v) => parseFloat(v) || 0;
-      const w = parseFloat(ps.width);
-      const h = parseFloat(ps.height);
+      const n = (v) => (parseFloat(v) || 0) * ctx.layoutScale;
+      const w = n(ps.width);
+      const h = n(ps.height);
       if (!(w > 0 && h > 0)) return;
       const pad = {
         l: r.left + n(cs.borderLeftWidth), t: r.top + n(cs.borderTopWidth),
@@ -794,8 +801,8 @@
         const m = ps.transform.match(/^matrix\(([^)]+)\)$/);
         if (m) {
           const k = m[1].split(",").map(Number);
-          L += k[4];
-          T += k[5];
+          L += k[4] * ctx.layoutScale;
+          T += k[5] * ctx.layoutScale;
         }
         const fake = { left: L, top: T, right: L + bw, bottom: T + bh, width: bw, height: bh };
         if (!intersect(ltrb(fake), ctx.clip)) return;
@@ -943,6 +950,7 @@
       add({
         kind: "image",
         ...b,
+        layoutScale: ctx.layoutScale,
         blend: cs.mixBlendMode !== "normal" ? cs.mixBlendMode : ctx.blend || "",
         media: m.el,
         frame: styleString(cs, ["border-top-width", "border-right-width", "border-bottom-width", "border-left-width", "border-top-style", "border-right-style", "border-bottom-style", "border-left-style", "border-top-color", "border-right-color", "border-bottom-color", "border-left-color"]),
@@ -1007,11 +1015,10 @@
       root.setAttribute("style", st);
       root.textContent = text;
       textItem(
-        { ...b, layer: ctx.layer, key: key + 0.5, op: ctx.op, clip: clipFor(r, ctx.clip, ctx.layer), parentBox: boxIt || ctx.boxItem },
+        { ...b, layoutScale: ctx.layoutScale, layer: ctx.layer, key: key + 0.5, op: ctx.op, clip: clipFor(r, ctx.clip, ctx.layer), parentBox: boxIt || ctx.boxItem },
         root,
         { ...b },
         cs,
-        ctx.layer,
       );
     }
 
@@ -1041,6 +1048,7 @@
       }
       const op = ctx.op * parseFloat(cs.opacity);
       if (!(op > 0.03)) return;
+      const layoutScale = ctx.layoutScale * uniformScale(cs);
       const r = el.getBoundingClientRect();
       // "visually hidden" accessibility text: 1px boxes, clip:rect(0 0 0 0), clip-path:inset(50%)
       // (html/body overflow belongs to the viewport, so a 0px-tall body clips nothing)
@@ -1049,7 +1057,7 @@
       if (cs.position === "absolute" && /rect\(0px,? 0px,? 0px,? 0px\)/.test(cs.clip)) return;
       if (/inset\(50%\)|circle\(0px/.test(cs.clipPath)) return;
       if (cs.float !== "none" && r.width > 1 && r.height > 1) {
-        const n = (p) => parseFloat(cs.getPropertyValue(p)) || 0;
+        const n = (p) => (parseFloat(cs.getPropertyValue(p)) || 0) * layoutScale;
         floats.push({ el, side: cs.float, l: r.left - n("margin-left"), t: r.top - n("margin-top"), r: r.right + n("margin-right"), b: r.bottom + n("margin-bottom") });
       }
       let layer = ctx.layer;
@@ -1095,8 +1103,8 @@
 
       if (REPLACED.has(tag) || FORMS.has(tag)) {
         if (emit) {
-          if (FORMS.has(tag)) emitForm(el, cs, r, { ...ctx, layer, clip, op }, keyFn());
-          else emitMedia(el, cs, r, { ...ctx, layer, clip, op }, keyFn());
+          if (FORMS.has(tag)) emitForm(el, cs, r, { ...ctx, layer, clip, op, layoutScale }, keyFn());
+          else emitMedia(el, cs, r, { ...ctx, layer, clip, op, layoutScale }, keyFn());
         }
         node.end = items.length;
         return;
@@ -1104,7 +1112,7 @@
 
       let boxItem = ctx.boxItem;
       if (emit) {
-        const b = emitBox(el, cs, r, { ...ctx, layer, clip, op }, keyFn(), false);
+        const b = emitBox(el, cs, r, { ...ctx, layer, clip, op, layoutScale }, keyFn(), false);
         if (b) boxItem = b;
       }
 
@@ -1114,10 +1122,10 @@
         portKey = keyFn();
       }
       else if (el !== html && el !== body && (cs.overflowX !== "visible" || cs.overflowY !== "visible")) {
-        const bl = parseFloat(cs.borderLeftWidth) || 0;
-        const bt = parseFloat(cs.borderTopWidth) || 0;
-        const br = parseFloat(cs.borderRightWidth) || 0;
-        const bb = parseFloat(cs.borderBottomWidth) || 0;
+        const bl = (parseFloat(cs.borderLeftWidth) || 0) * layoutScale;
+        const bt = (parseFloat(cs.borderTopWidth) || 0) * layoutScale;
+        const br = (parseFloat(cs.borderRightWidth) || 0) * layoutScale;
+        const bb = (parseFloat(cs.borderBottomWidth) || 0) * layoutScale;
         kidClip = intersect(clip, { l: r.left + bl, t: r.top + bt, r: r.right - br, b: r.bottom - bb });
         if (!kidClip) {
           node.end = items.length;
@@ -1125,7 +1133,7 @@
         }
       }
       const blend = cs.mixBlendMode !== "normal" ? cs.mixBlendMode : ctx.blend;
-      const kctx = { op, layer: kidLayer, clip: kidClip, zTop, posd, boxItem, key: keyFn, blend };
+      const kctx = { op, layer: kidLayer, clip: kidClip, zTop, posd, boxItem, key: keyFn, blend, layoutScale };
 
       // Decide: one text leaf, or a mix of text runs and nested blocks.
       // Closed <details> and content-visibility:hidden still report real boxes for
@@ -1206,7 +1214,7 @@
 
     const rootLayer = env.isRoot ? "world" : "under";
     const rootClip = env.isRoot ? fullClip : viewClip;
-    walk(html, { op: 1, layer: rootLayer, clip: rootClip, zTop: null, posd: false, boxItem: null }, null);
+    walk(html, { op: 1, layer: rootLayer, clip: rootClip, zTop: null, posd: false, boxItem: null, layoutScale: 1 }, null);
 
     // --------------------------------------------- repeated components (dup)
     const groups = [];
@@ -1800,6 +1808,7 @@
         n.className = "it l";
         n.innerHTML = '<svg width="1" height="1"><path fill="none"/></svg>';
       }
+      if (it.layoutScale !== 1) n.style.zoom = it.layoutScale;
       if (it.op < 0.999) n.style.opacity = it.op;
       if (it.blend) n.style.mixBlendMode = it.blend;
       return n;
@@ -1845,14 +1854,17 @@
       }
       const w = it.draw ? it.draw.w : it.w;
       const h = it.draw ? it.draw.h : it.h;
-      let tf = `translate(${it.x + it.dx}px,${it.y + it.dy}px)`;
+      // Keep animation and clipping in screen coordinates while laying out the
+      // clone at its original CSS size. Zoom scales both lengths and translations.
+      const s = it.layoutScale;
+      let tf = `translate(${(it.x + it.dx) / s}px,${(it.y + it.dy) / s}px)`;
       if (it.scale !== 1) tf += ` scale(${it.scale})`;
       n.style.transform = tf;
-      n.style.width = w + "px";
-      n.style.height = h + "px";
+      n.style.width = w / s + "px";
+      n.style.height = h / s + "px";
       const c = it.clip;
       n.style.clipPath =
-        it.done && c ? `inset(${Math.max(0, c.t - it.y)}px ${Math.max(0, it.x + it.w - c.r)}px ${Math.max(0, it.y + it.h - c.b)}px ${Math.max(0, c.l - it.x)}px)` : "";
+        it.done && c ? `inset(${Math.max(0, c.t - it.y) / s}px ${Math.max(0, it.x + it.w - c.r) / s}px ${Math.max(0, it.y + it.h - c.b) / s}px ${Math.max(0, c.l - it.x) / s}px)` : "";
 
       if (it.kind === "rect") {
         const css = it.mode === "master" ? it.copyOf.css : it.css;
@@ -1920,7 +1932,7 @@
         } else if (it._caret && it._caret.parentNode) it._caret.remove();
         if (it.scale !== 1) {
           const ox = it.tb.x - it.x + (it.align === "center" ? it.tb.w / 2 : it.align === "right" || it.align === "end" ? it.tb.w : 0);
-          n.style.transformOrigin = `${ox}px ${it.tb.y - it.y}px`;
+          n.style.transformOrigin = `${ox / s}px ${(it.tb.y - it.y) / s}px`;
         }
       }
     }
