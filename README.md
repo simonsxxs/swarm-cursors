@@ -31,9 +31,9 @@ The store version can lag behind this repo while an update is in review. To run 
 - The page fades out and the cursors orbit the site's favicon, then fan out and start building.
 - **Scroll** and the swarm chases you, with more agents joining the faster you go.
 - **Tour** auto-scrolls at the pace the swarm can keep up with. Good for screen recordings.
-- **1× / 2× / 3×** changes build speed.
+- The build starts at **0.75×**. The speed button cycles through **0.75× / 1× / 2× / 3×**.
 - **Sound** is on by default (🔊 in the toolbar, or press **M**). If the page hasn't been clicked yet, Chrome keeps audio locked and the button says **Tap for sound**; one click anywhere starts it.
-- **Hide** hides the toolbar for clean screen recordings (or press **H**). Move your mouse to the bottom of the screen or press **H** again to show it.
+- The toolbar starts hidden for screen recordings. Press **H**, or move your mouse to the bottom of the screen and click **Show controls**, to reveal it. Press **H** or click **Hide** to hide it again.
 - When it's done, the cursors flock to your mouse. **Go live** fades back to the real, clickable page; **Replay** builds it again.
 - **Esc**, **✕**, or clicking the icon again exits at any time.
 - **Play automatically** (off by default): right-click the icon → **Options** and choose *on sites I choose* or *on every site*. Chrome asks you to allow access to those sites first, and switching back to *Only when I click* gives that access up.

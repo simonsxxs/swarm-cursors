@@ -1659,7 +1659,7 @@
   <div class="txt"><span class="status">Scanning page…</span></div>
   <div class="bar"><i></i></div>
   <button data-a="tour" title="Auto-scroll while the swarm builds">Tour</button>
-  <button data-a="speed" title="Build speed">1×</button>
+  <button data-a="speed" title="Build speed">0.75×</button>
   <button data-a="sound" class="snd" title="Sound (M)"></button>
   <button data-a="hide" title="Hide controls for recording (H)">Hide</button>
   <button data-a="live" class="pri" hidden title="Fade back to the real page">Go live</button>
@@ -3490,11 +3490,11 @@
       this.tour = false;
       this.tourV = 0;
       this.tourAcc = 0;
-      this.speeds = [1, 2, 3];
+      this.speeds = [0.75, 1, 2, 3];
       this.speedIx = 0;
       this.complete = false;
       this.timing = {};
-      this.hudHidden = false;
+      this.hudHidden = true;
     }
 
     setHudHidden(hidden) {
@@ -3536,6 +3536,7 @@
       const shotP = this.loadShot();
       this.view = new View(this.env);
       this.engine = new Engine(this.view);
+      this.engine.speed = this.speeds[this.speedIx];
       this.sfx = new Sound();
       this.sfx.init();
       this.engine.sfx = this.sfx;
@@ -3550,6 +3551,7 @@
       this.view.bg.classList.add("on");
       this.view.intro.classList.add("on");
       this.view.hud.classList.add("on");
+      this.setHudHidden(this.hudHidden);
       const mark = (k) => (this.timing[k] = Math.round(performance.now() - this.t0));
       await sleep(520);
       await unhidePage();
